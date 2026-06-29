@@ -262,13 +262,26 @@
           </div>
           <div class="field"><label>Observaciones</label><input type="text" id="rec-obs" placeholder="(opcional)"></div>
           <div class="field">
-            <label>📷 Foto (opcional)</label>
+            <label>📷 Foto del material recibido *</label>
             <div class="foto-preview" id="rec-foto-preview" onclick="tomarFotoRecepcion()">
-              <div class="foto-placeholder"><span>📷</span><p style="font-size:12px;">Toca para fotografiar</p></div>
+              <div class="foto-placeholder"><span>📷</span><p style="font-size:12px;">Obligatorio — toca para fotografiar</p></div>
             </div>
             <input type="file" id="rec-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="previewFotoRecepcion(event)">
           </div>
+          <div class="field">
+            <label>📄 Foto de guía/factura (opcional — IA extraerá datos)</label>
+            <div class="foto-preview" id="rec-guia-foto-preview" onclick="document.getElementById('rec-guia-foto-input').click()" style="height:100px;cursor:pointer;">
+              <div class="foto-placeholder"><span>📄</span><p style="font-size:12px;">Fotografía o sube PDF de la guía</p></div>
+            </div>
+            <input type="file" id="rec-guia-foto-input" accept="image/*,application/pdf" style="display:none;" onchange="previewFotoGuia(event)">
+          </div>
+          <div id="rec-items-guia" style="display:none;margin-bottom:10px;"></div>
+          <div class="field">
+            <label>💰 Precio unitario</label>
+            <input type="number" id="rec-precio-unitario" min="0" placeholder="Se extrae de guía o ingreso manual" step="1">
+          </div>
         </div>
+        <button class="btn-primary" id="btn-ia-recepcion" style="background:#5c6bc0;" onclick="procesarRecepcionConIA()">🤖 Identificar artículo con IA</button>
         <div style="display:flex;gap:10px;">
           <button class="btn-secondary" style="flex:1;margin-top:0;" onclick="limpiarRecepcion()">🗑 Limpiar</button>
           <button class="btn-primary btn-verde" style="flex:2;margin-top:0;" id="btn-guardar-recepcion" onclick="guardarRecepcion()">✅ Confirmar recepción</button>
@@ -429,6 +442,7 @@
     CLIENT_ID: '72369192874-rgv4vqjl243p39fv0dntkl5a4m13s8k6.apps.googleusercontent.com',
     SHEET_ID: '1FN8hKdTWxS2PC7TrxVVpS_-M6dHnfCAjcl1Fcr7j9t0',
     FOLDER_FOTOS: '1Wkbedttq-fR8M7jO10Ap2mZc_UNsnMw4',
+    APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyjz4g626DN2Vo6Q93-FYHn_tZZHVqiDtY_zGpZ9DjtYtehK8BwW4i_KqMmZMA6OJDD/exec',
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file'
   };
  
@@ -861,7 +875,9 @@
       + '<div class="foto-preview" id="contar-foto-preview" onclick="document.getElementById(\'contar-foto-input\').click()" style="height:120px;">'
       + '<div class="foto-placeholder"><span>📷</span><p style="font-size:11px;">Toca para fotografiar</p></div></div>'
       + '<input type="file" id="contar-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="previewFotoContar(event)"></div>'
-      + '<div style="display:flex;gap:8px;margin-top:12px;">'
+      + '<div id="contar-ia-resultado" style="display:none;background:#e8f5e9;border-left:4px solid var(--verde);padding:10px 12px;border-radius:0 8px 8px 0;font-size:12px;color:#1b5e20;margin-bottom:10px;line-height:1.5;"></div>'
+      + '<button id="btn-ia-conteo" class="btn-primary" style="margin-top:0;margin-bottom:8px;background:#5c6bc0;font-size:13px;" onclick="if(contarFotoBlob){procesarConteoConIA(\'' + a.cod + '\',contarFotoBlob)}else{toast(\'Toma una foto primero\',\'error\')}">🤖 Contar con IA</button>'
+      + '<div style="display:flex;gap:8px;">'
       + '<button class="btn-secondary" style="flex:1;margin-top:0;" onclick="cerrarModal(\'modal-contar\')">Cancelar</button>'
       + '<button class="btn-primary btn-verde" style="flex:2;margin-top:0;" onclick="confirmarConteo(\'' + a.cod + '\')">✅ Confirmar conteo</button>'
       + '</div>';
@@ -1114,7 +1130,16 @@
       const proveedor = document.getElementById('rec-proveedor').value;
       const obs = document.getElementById('rec-obs').value;
       const usuario = usuarioInfo ? usuarioInfo.name : 'Usuario';
-      await appendRow('RECEPCIONES', [fecha, cod, articulo ? articulo.nombre : '', cantidad, articulo ? articulo.unidad : 'UN', guia, proveedor, usuario, obs, new Date().toLocaleString('es-CL')]);
+      const precioUnit = parseFloat(document.getElementById('rec-precio-unitario')?.value) || 0;
+      // Actualizar UltimoPrecio en INVENTARIO si hay precio
+      if (articulo && precioUnit > 0) {
+        const fechaHoy = new Date().toLocaleDateString('es-CL');
+        await batchUpdate([
+          { range: 'INVENTARIO!K' + articulo.rowNum, values: [[precioUnit]] },
+          { range: 'INVENTARIO!L' + articulo.rowNum, values: [[precioUnit * cantidad]] },
+        ]);
+      }
+      await appendRow('RECEPCIONES', [fecha, cod, articulo ? articulo.nombre : '', cantidad, articulo ? articulo.unidad : 'UN', guia, proveedor, precioUnit || '', usuario, obs, new Date().toLocaleString('es-CL')]);
       await appendRow('HISTORIAL', [fecha, articulo ? articulo.nombre : cod, 'RECEPCION', cantidad, cod, usuario, obs]);
       if (articulo) {
         const nuevoStock = (articulo.stockNuevo || articulo.stockAnterior) + cantidad;
@@ -1144,7 +1169,12 @@
  
   function nuevaRecepcion() { limpiarRecepcion(); document.getElementById('recepcion-form').style.display = 'block'; document.getElementById('recepcion-resultado').style.display = 'none'; }
   function limpiarRecepcion() {
-    ['rec-articulo-nombre','rec-articulo-cod','rec-cantidad','rec-guia','rec-proveedor','rec-obs'].forEach(id => { document.getElementById(id).value = ''; });
+    ['rec-articulo-nombre','rec-articulo-cod','rec-cantidad','rec-guia','rec-proveedor','rec-obs','rec-precio-unitario'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    window._recGuiaBlob = null;
+    const guiaPrev = document.getElementById('rec-guia-foto-preview');
+    if (guiaPrev) guiaPrev.innerHTML = '<div class="foto-placeholder"><span>📄</span><p style="font-size:12px;">Fotografía o sube PDF de la guía</p></div>';
+    const itemsGuia = document.getElementById('rec-items-guia');
+    if (itemsGuia) { itemsGuia.style.display = 'none'; itemsGuia.innerHTML = ''; }
     document.getElementById('rec-articulo-info').style.display = 'none';
     document.getElementById('rec-sugerencias').style.display = 'none';
     document.getElementById('rec-foto-preview').innerHTML = '<div class="foto-placeholder"><span>📷</span><p style="font-size:12px;">Toca para fotografiar</p></div>';
@@ -1239,6 +1269,18 @@
   //  FOTOS
   // ═══════════════════════════════════════
   function tomarFotoRecepcion() { document.getElementById('rec-foto-input').click(); }
+  function previewFotoGuia(event) {
+    const f = event.target.files[0];
+    if (!f) return;
+    window._recGuiaBlob = f;
+    const isPDF = f.type === 'application/pdf';
+    const preview = document.getElementById('rec-guia-foto-preview');
+    if (isPDF) {
+      preview.innerHTML = '<div style="text-align:center;padding:20px;"><div style="font-size:32px;">📄</div><div style="font-size:12px;color:var(--azul);font-weight:600;">' + f.name + '</div></div>';
+    } else {
+      preview.innerHTML = '<img src="' + URL.createObjectURL(f) + '" style="width:100%;height:100%;object-fit:cover;">';
+    }
+  }
   function tomarFotoDevolucion() { document.getElementById('dev-foto-input').click(); }
   function previewFotoRecepcion(event) { const f=event.target.files[0]; if(!f)return; recFotoBlob=f; document.getElementById('rec-foto-preview').innerHTML='<img src="'+URL.createObjectURL(f)+'">'; }
   function previewFotoDevolucion(event) { const f=event.target.files[0]; if(!f)return; devFotoBlob=f; document.getElementById('dev-foto-preview').innerHTML='<img src="'+URL.createObjectURL(f)+'">'; }
@@ -1363,7 +1405,224 @@
   </script>
 </body>
 </html>
+<script>
+  // ═══════════════════════════════════════
+  //  IA — LLAMAR AL BACKEND APPS SCRIPT
+  // ═══════════════════════════════════════
+  async function llamarIA(accion, datos) {
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ accion, ...datos })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error en IA');
+    return json.data;
+  }
  
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+ 
+  // ═══════════════════════════════════════
+  //  IA — CONTAR ARTÍCULO EN INVENTARIO
+  // ═══════════════════════════════════════
+  async function analizarFotoConteo(blob, articulo) {
+    const b64 = await blobToBase64(blob);
+    return await llamarIA('contarArticulo', {
+      imagenBase64: b64,
+      mimeType: blob.type || 'image/jpeg',
+      fotoReferenciaUrl: articulo.fotos || '',
+      nombreArticulo: articulo.nombre,
+      stockAnterior: articulo.stockAnterior
+    });
+  }
+ 
+  // ═══════════════════════════════════════
+  //  IA — ANALIZAR GUÍA O FACTURA
+  // ═══════════════════════════════════════
+  async function analizarDocumentoGuia(blob) {
+    const b64 = await blobToBase64(blob);
+    return await llamarIA('analizarGuia', {
+      imagenBase64: b64,
+      mimeType: blob.type || 'image/jpeg'
+    });
+  }
+ 
+  // ═══════════════════════════════════════
+  //  IA — IDENTIFICAR ARTÍCULO POR IMAGEN
+  // ═══════════════════════════════════════
+  async function identificarArticuloPorImagen(blob, descripcionTexto) {
+    const b64 = await blobToBase64(blob);
+    const desc = descripcionTexto ? descripcionTexto.toLowerCase() : '';
+    const palabras = desc.split(' ').filter(p => p.length > 3);
+    let candidatos = inventario.filter(a => {
+      const nom = a.nombre.toLowerCase();
+      return palabras.some(p => nom.includes(p));
+    }).slice(0, 5);
+    if (candidatos.length === 0) {
+      candidatos = inventario.filter(a => a.fotos && a.fotos !== '').slice(0, 5);
+    }
+    if (candidatos.length === 0) return { mejor_coincidencia: null, confianza: 'baja', razon: 'Sin candidatos', ranking: [] };
+ 
+    const resultado = await llamarIA('identificarArticulo', {
+      imagenBase64: b64,
+      mimeType: blob.type || 'image/jpeg',
+      descripcionTexto,
+      candidatos: candidatos.map(a => ({ cod: a.cod, nombre: a.nombre, fotoUrl: a.fotos || '' }))
+    });
+    if (resultado.mejor_coincidencia) {
+      resultado.articulo = inventario.find(a => a.cod === resultado.mejor_coincidencia) || null;
+    }
+    return resultado;
+  }
+ 
+  // ═══════════════════════════════════════
+  //  IA — FLUJO COMPLETO RECEPCIÓN CON IA
+  // ═══════════════════════════════════════
+  async function procesarRecepcionConIA() {
+    const fotoMaterialInput = document.getElementById('rec-foto-input');
+    const fotoGuiaInput     = document.getElementById('rec-guia-foto-input');
+    const fotoMaterial      = fotoMaterialInput && fotoMaterialInput.files[0];
+    const fotoGuia          = fotoGuiaInput && fotoGuiaInput.files[0];
+ 
+    if (!fotoMaterial) { toast('Fotografía el material recibido primero', 'error'); return; }
+ 
+    const btnIA = document.getElementById('btn-ia-recepcion');
+    if (btnIA) { btnIA.disabled = true; btnIA.innerHTML = '<span class="spinner"></span> Analizando con IA...'; }
+ 
+    try {
+      let descripcionGuia = '';
+      let datosGuia = null;
+ 
+      // 1. Analizar guía/factura si existe
+      if (fotoGuia) {
+        toast('📄 Extrayendo datos del documento...', '');
+        datosGuia = await analizarDocumentoGuia(fotoGuia);
+        if (datosGuia && datosGuia.items && datosGuia.items.length > 0) {
+          descripcionGuia = datosGuia.items[0].descripcion || '';
+          // Pre-rellenar campos de la guía
+          if (datosGuia.proveedor) document.getElementById('rec-proveedor').value = datosGuia.proveedor;
+          if (datosGuia.numeroDocumento) document.getElementById('rec-guia').value = datosGuia.numeroDocumento;
+          // Mostrar items extraídos
+          mostrarItemsGuia(datosGuia.items);
+        }
+      }
+ 
+      // 2. Identificar artículo por imagen + descripción
+      toast('🔍 Identificando artículo...', '');
+      const identificacion = await identificarArticuloPorImagen(fotoMaterial, descripcionGuia);
+ 
+      // 3. Mostrar resultado con foto de referencia
+      mostrarResultadoIdentificacionRecepcion(identificacion, datosGuia);
+ 
+    } catch(e) {
+      toast('Error IA: ' + e.message, 'error');
+    } finally {
+      if (btnIA) { btnIA.disabled = false; btnIA.innerHTML = '🤖 Identificar con IA'; }
+    }
+  }
+ 
+  function mostrarItemsGuia(items) {
+    const cont = document.getElementById('rec-items-guia');
+    if (!cont) return;
+    cont.style.display = 'block';
+    cont.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--azul);margin-bottom:8px;">📄 Items extraídos del documento:</div>'
+      + items.map((item, i) =>
+        '<div style="background:var(--fondo);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;border:1.5px solid transparent;" onclick="seleccionarItemGuia(' + i + ')" id="item-guia-' + i + '">'
+        + '<div style="font-size:13px;font-weight:600;">' + (item.descripcion || '') + '</div>'
+        + '<div style="font-size:11px;color:var(--texto-sec);">Cant: ' + (item.cantidad || '?') + ' ' + (item.unidad || '') + ' | Precio: $' + (item.precioUnitario ? item.precioUnitario.toLocaleString('es-CL') : '?') + '</div>'
+        + '</div>'
+      ).join('');
+    window._itemsGuia = items;
+  }
+ 
+  function seleccionarItemGuia(idx) {
+    document.querySelectorAll('[id^="item-guia-"]').forEach(el => el.style.borderColor = 'transparent');
+    document.getElementById('item-guia-' + idx).style.borderColor = 'var(--azul)';
+    const item = window._itemsGuia[idx];
+    if (item) {
+      if (item.cantidad) document.getElementById('rec-cantidad').value = item.cantidad;
+      if (item.precioUnitario) document.getElementById('rec-precio-unitario') && (document.getElementById('rec-precio-unitario').value = item.precioUnitario);
+    }
+  }
+ 
+  function mostrarResultadoIdentificacionRecepcion(resultado, datosGuia) {
+    const art = resultado.articulo;
+    const confianzaColor = resultado.confianza === 'alta' ? 'var(--verde)' : resultado.confianza === 'media' ? 'var(--amarillo)' : 'var(--naranja)';
+    const fotoRef = art && art.fotos ? '<img src="' + art.fotos + '" style="width:100%;max-height:160px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="this.style.display=\'none\'">' : '';
+ 
+    // Mostrar en modal
+    document.getElementById('modal-contar-titulo').textContent = '🤖 Artículo identificado por IA';
+    document.getElementById('modal-contar-body').innerHTML =
+      '<div class="info-box" style="margin-bottom:10px;">'
+      + 'Confianza: <strong style="color:' + confianzaColor + '">' + (resultado.confianza || '').toUpperCase() + '</strong> — ' + (resultado.razon || '')
+      + '</div>'
+      + (art ? fotoRef
+        + '<div style="background:var(--fondo);border-radius:10px;padding:12px;margin-bottom:12px;">'
+        + '<div style="font-family:monospace;font-size:11px;color:var(--texto-sec);">' + art.cod + '</div>'
+        + '<div style="font-size:15px;font-weight:700;color:var(--azul);margin:4px 0;">' + art.nombre + '</div>'
+        + '<div style="font-size:12px;color:var(--texto-sec);">Stock actual: ' + (art.stockNuevo || art.stockAnterior) + ' ' + art.unidad + '</div>'
+        + '</div>'
+        : '<div class="info-box naranja" style="margin-bottom:12px;">⚠️ No se encontró coincidencia — usa búsqueda manual</div>')
+      + '<div style="display:flex;gap:8px;">'
+      + (art ? '<button class="btn-primary btn-verde" style="flex:2;margin-top:0;font-size:13px;" onclick="cerrarModal(\'modal-contar\');confirmarArticuloIA(\'' + art.cod + '\')">✅ Sí, es este artículo</button>' : '')
+      + '<button class="btn-secondary" style="flex:1;margin-top:0;" onclick="cerrarModal(\'modal-contar\')">🔍 Buscar manual</button>'
+      + '</div>';
+    abrirModal('modal-contar');
+  }
+ 
+  function confirmarArticuloIA(cod) {
+    const a = inventario.find(x => x.cod === cod);
+    if (a) seleccionarArticuloRecepcion(a);
+  }
+ 
+  // ═══════════════════════════════════════
+  //  IA — FLUJO CONTEO CON IA
+  // ═══════════════════════════════════════
+  async function procesarConteoConIA(cod, blob) {
+    const a = inventario.find(x => x.cod === cod);
+    if (!a) return;
+ 
+    const btnIA = document.getElementById('btn-ia-conteo-' + cod);
+    if (btnIA) { btnIA.disabled = true; btnIA.innerHTML = '<span class="spinner" style="border-top-color:var(--azul);border-color:rgba(0,59,73,0.2);"></span>'; }
+ 
+    try {
+      toast('🤖 Claude contando unidades...', '');
+      const resultado = await analizarFotoConteo(blob, a);
+ 
+      // Pre-rellenar cantidad sugerida
+      const inputCant = document.getElementById('contar-cantidad');
+      if (inputCant && resultado.cantidad !== undefined) {
+        inputCant.value = resultado.cantidad;
+        inputCant.style.borderColor = 'var(--verde)';
+      }
+ 
+      // Mostrar resultado
+      const obs = document.getElementById('contar-ia-resultado');
+      if (obs) {
+        const color = resultado.confianza === 'alta' ? 'var(--verde)' : resultado.confianza === 'media' ? 'var(--amarillo)' : 'var(--naranja)';
+        obs.style.display = 'block';
+        obs.innerHTML = '🤖 IA sugiere: <strong style="color:' + color + '">' + resultado.cantidad + ' ' + a.unidad + '</strong>'
+          + ' (confianza ' + resultado.confianza + ')'
+          + (resultado.observacion ? ' — ' + resultado.observacion : '')
+          + '<br><span style="font-size:11px;color:var(--texto-sec);">Puedes corregir el número si es necesario</span>';
+      }
+      toast('✅ IA sugiere ' + resultado.cantidad + ' unidades', 'success');
+    } catch(e) {
+      toast('Error IA: ' + e.message, 'error');
+    } finally {
+      if (btnIA) { btnIA.disabled = false; btnIA.innerHTML = '🤖'; }
+    }
+  }
+</script>
+ 
+
 
 
 
