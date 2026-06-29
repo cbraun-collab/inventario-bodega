@@ -1409,6 +1409,22 @@
   // ═══════════════════════════════════════
   //  IA — LLAMAR AL BACKEND APPS SCRIPT
   // ═══════════════════════════════════════
+  // ── Subir archivo a Drive y obtener fileId ──
+  async function subirArchivoParaIA(blob, nombre) {
+    const metadata = { name: nombre, parents: [CONFIG.FOLDER_FOTOS] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', blob);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken },
+      body: form
+    });
+    const data = await res.json();
+    if (!data.id) throw new Error('Error subiendo archivo a Drive');
+    return data.id;
+  }
+ 
   async function llamarIA(accion, datos) {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
       method: 'POST',
@@ -1420,24 +1436,23 @@
     return json.data;
   }
  
-  function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
- 
   // ═══════════════════════════════════════
   //  IA — CONTAR ARTÍCULO EN INVENTARIO
   // ═══════════════════════════════════════
   async function analizarFotoConteo(blob, articulo) {
-    const b64 = await blobToBase64(blob);
+    // 1. Subir foto a Drive
+    const fileId = await subirArchivoParaIA(blob, 'IA_CONTEO_' + articulo.cod + '_' + Date.now() + '.jpg');
+    // 2. Extraer fileId de foto de referencia si existe
+    let fotoReferenciaFileId = null;
+    let fotoReferenciaUrl = articulo.fotos || '';
+    if (fotoReferenciaUrl && fotoReferenciaUrl.includes('drive.google.com/file/d/')) {
+      const match = fotoReferenciaUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match) { fotoReferenciaFileId = match[1]; fotoReferenciaUrl = ''; }
+    }
     return await llamarIA('contarArticulo', {
-      imagenBase64: b64,
-      mimeType: blob.type || 'image/jpeg',
-      fotoReferenciaUrl: articulo.fotos || '',
+      fileId,
+      fotoReferenciaFileId,
+      fotoReferenciaUrl,
       nombreArticulo: articulo.nombre,
       stockAnterior: articulo.stockAnterior
     });
@@ -1447,18 +1462,15 @@
   //  IA — ANALIZAR GUÍA O FACTURA
   // ═══════════════════════════════════════
   async function analizarDocumentoGuia(blob) {
-    const b64 = await blobToBase64(blob);
-    return await llamarIA('analizarGuia', {
-      imagenBase64: b64,
-      mimeType: blob.type || 'image/jpeg'
-    });
+    const fileId = await subirArchivoParaIA(blob, 'IA_GUIA_' + Date.now() + (blob.type === 'application/pdf' ? '.pdf' : '.jpg'));
+    return await llamarIA('analizarGuia', { fileId });
   }
  
   // ═══════════════════════════════════════
   //  IA — IDENTIFICAR ARTÍCULO POR IMAGEN
   // ═══════════════════════════════════════
   async function identificarArticuloPorImagen(blob, descripcionTexto) {
-    const b64 = await blobToBase64(blob);
+    const fileId = await subirArchivoParaIA(blob, 'IA_IDENT_' + Date.now() + '.jpg');
     const desc = descripcionTexto ? descripcionTexto.toLowerCase() : '';
     const palabras = desc.split(' ').filter(p => p.length > 3);
     let candidatos = inventario.filter(a => {
@@ -1470,11 +1482,19 @@
     }
     if (candidatos.length === 0) return { mejor_coincidencia: null, confianza: 'baja', razon: 'Sin candidatos', ranking: [] };
  
+    // Extraer fileId de fotos de referencia de candidatos
+    const candidatosConFoto = candidatos.map(a => {
+      let fotoFileId = null, fotoUrl = a.fotos || '';
+      if (fotoUrl && fotoUrl.includes('drive.google.com/file/d/')) {
+        const match = fotoUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (match) { fotoFileId = match[1]; fotoUrl = ''; }
+      }
+      return { cod: a.cod, nombre: a.nombre, fotoFileId, fotoUrl };
+    });
     const resultado = await llamarIA('identificarArticulo', {
-      imagenBase64: b64,
-      mimeType: blob.type || 'image/jpeg',
+      fileId,
       descripcionTexto,
-      candidatos: candidatos.map(a => ({ cod: a.cod, nombre: a.nombre, fotoUrl: a.fotos || '' }))
+      candidatos: candidatosConFoto
     });
     if (resultado.mejor_coincidencia) {
       resultado.articulo = inventario.find(a => a.cod === resultado.mejor_coincidencia) || null;
@@ -1622,6 +1642,8 @@
   }
 </script>
  
+
+
 
 
 
