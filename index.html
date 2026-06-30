@@ -377,7 +377,27 @@
           <div id="lista-repisas" style="margin-top:8px;">
             <div class="empty-state"><div class="empty-icon">🔄</div><p>Cargando repisas...</p></div>
           </div>
-          <button class="btn-primary" style="margin-top:12px;background:#5c6bc0;" onclick="abrirEscanerInventario()">📷 Escanear QR para ir directo al artículo</button>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn-primary" style="flex:1;margin-top:0;background:#5c6bc0;" onclick="abrirEscanerInventario()">📷 Escanear QR</button>
+            <button class="btn-primary" style="flex:1;margin-top:0;background:var(--azul-claro);" onclick="abrirBusquedaManualInventario()">⌨️ Buscar manual</button>
+          </div>
+        </div>
+      </div>
+ 
+      <!-- Modal búsqueda manual de artículo para inventario -->
+      <div class="modal-overlay" id="modal-busqueda-inv">
+        <div class="modal-card">
+          <div class="modal-header">
+            <span class="modal-title">⌨️ Buscar artículo manualmente</span>
+            <button class="modal-close" onclick="cerrarModal('modal-busqueda-inv')">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="field">
+              <label>Código o nombre del artículo</label>
+              <input type="text" id="inv-busqueda-input" placeholder="Ej: BR0004 o broca hormigón" oninput="filtrarBusquedaManualInv(this.value)" style="font-size:16px;">
+            </div>
+            <div id="inv-busqueda-resultados" style="max-height:320px;overflow-y:auto;"></div>
+          </div>
         </div>
       </div>
  
@@ -394,7 +414,10 @@
         <div id="lista-articulos-repisa"></div>
         <div style="margin-top:8px;padding:12px;background:var(--fondo);border-radius:10px;text-align:center;">
           <div style="font-size:12px;color:var(--texto-sec);margin-bottom:8px;">¿Artículo no aparece en esta repisa?</div>
-          <button onclick="abrirEscanerInventario()" style="background:var(--azul);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer;">📷 Escanear QR</button>
+          <div style="display:flex;gap:8px;">
+            <button onclick="abrirEscanerInventario()" style="flex:1;background:var(--azul);color:white;border:none;padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;">📷 Escanear QR</button>
+            <button onclick="abrirBusquedaManualInventario()" style="flex:1;background:var(--azul-claro);color:white;border:none;padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;">⌨️ Buscar manual</button>
+          </div>
         </div>
       </div>
  
@@ -866,8 +889,12 @@
       + '<div class="field"><label>Cantidad contada *</label>'
       + '<input type="number" id="contar-cantidad" min="0" placeholder="0" style="font-size:26px;font-weight:700;text-align:center;border:2px solid var(--azul);" value="' + (a.stockNuevo || '') + '">'
       + '</div>'
-      + (repisaActual ? '' :
-        '<div class="field-row">'
+      + (repisaActual ? '<div class="info-box" style="margin-bottom:10px;">📦 Repisa: <strong>' + repisaActual + '</strong> — <span onclick="mostrarCambioRepisaManual(this)" style="text-decoration:underline;cursor:pointer;color:var(--azul);">cambiar</span></div>'
+        + '<div class="field-row" id="contar-repisa-manual" style="display:none;">'
+        + '<div class="field"><label>Repisa</label><input type="text" id="contar-repisa" placeholder="Ej: R-01" value="' + (a.repisa || repisaActual || '') + '"></div>'
+        + '<div class="field"><label>Nivel</label><input type="text" id="contar-nivel" placeholder="Ej: A" value="' + (a.nivelRepisa || '') + '"></div>'
+        + '</div>'
+        : '<div class="field-row">'
         + '<div class="field"><label>Repisa</label><input type="text" id="contar-repisa" placeholder="Ej: R-01" value="' + (a.repisa || '') + '"></div>'
         + '<div class="field"><label>Nivel</label><input type="text" id="contar-nivel" placeholder="Ej: A" value="' + (a.nivelRepisa || '') + '"></div>'
         + '</div>')
@@ -885,6 +912,12 @@
     setTimeout(() => { const el = document.getElementById('contar-cantidad'); if (el) { el.focus(); el.select(); } }, 300);
   }
  
+  function mostrarCambioRepisaManual(el) {
+    const div = document.getElementById('contar-repisa-manual');
+    if (div) div.style.display = 'grid';
+    if (el) el.style.display = 'none';
+  }
+ 
   function previewFotoContar(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -899,8 +932,10 @@
     if (isNaN(cantidad) || cantidad < 0) { toast('Ingrese una cantidad válida', 'error'); return; }
     const a = inventario.find(x => x.cod === cod);
     if (!a) return;
-    const repisa = repisaActual || (document.getElementById('contar-repisa') ? document.getElementById('contar-repisa').value : a.repisa);
-    const nivel = repisaActual ? a.nivelRepisa : (document.getElementById('contar-nivel') ? document.getElementById('contar-nivel').value : a.nivelRepisa);
+    const repisaInput = document.getElementById('contar-repisa');
+    const nivelInput = document.getElementById('contar-nivel');
+    const repisa = repisaInput ? repisaInput.value.trim() : (repisaActual || a.repisa);
+    const nivel = nivelInput ? nivelInput.value.trim() : a.nivelRepisa;
     const usuario = usuarioInfo ? usuarioInfo.name : 'Usuario';
     const fecha = new Date();
     const fechaStr = fecha.toLocaleDateString('es-CL') + ' ' + fecha.toLocaleTimeString('es-CL', {hour:'2-digit',minute:'2-digit'});
@@ -977,6 +1012,47 @@
       }
     };
     iniciarQR();
+  }
+ 
+  // ═══════════════════════════════════════
+  //  BÚSQUEDA MANUAL EN INVENTARIO (sin QR)
+  // ═══════════════════════════════════════
+  function abrirBusquedaManualInventario() {
+    document.getElementById('inv-busqueda-input').value = '';
+    document.getElementById('inv-busqueda-resultados').innerHTML = '<div style="padding:16px;text-align:center;color:var(--texto-sec);font-size:13px;">Escribe el código o nombre del artículo</div>';
+    abrirModal('modal-busqueda-inv');
+    setTimeout(() => document.getElementById('inv-busqueda-input').focus(), 200);
+  }
+ 
+  function filtrarBusquedaManualInv(texto) {
+    const cont = document.getElementById('inv-busqueda-resultados');
+    const q = texto.trim().toLowerCase();
+    if (q.length < 2) {
+      cont.innerHTML = '<div style="padding:16px;text-align:center;color:var(--texto-sec);font-size:13px;">Escribe al menos 2 caracteres</div>';
+      return;
+    }
+    const resultados = inventario.filter(a =>
+      a.cod.toLowerCase().includes(q) || a.nombre.toLowerCase().includes(q)
+    ).slice(0, 20);
+ 
+    if (resultados.length === 0) {
+      cont.innerHTML = '<div style="padding:16px;text-align:center;color:var(--texto-sec);font-size:13px;">Sin resultados para "' + texto + '"</div>';
+      return;
+    }
+ 
+    cont.innerHTML = resultados.map(a => {
+      const repisaInfo = a.repisa ? ('📦 ' + a.repisa + (a.nivelRepisa ? ' / Nivel ' + a.nivelRepisa : '')) : '⚠️ Sin repisa asignada';
+      return '<div onclick="seleccionarArticuloBusquedaInv(\'' + a.cod + '\')" style="padding:10px 12px;border-radius:8px;background:var(--fondo);margin-bottom:6px;cursor:pointer;">'
+        + '<div style="font-family:monospace;font-size:11px;color:var(--texto-sec);">' + a.cod + '</div>'
+        + '<div style="font-size:14px;font-weight:600;color:var(--texto);">' + a.nombre + '</div>'
+        + '<div style="font-size:11px;color:var(--texto-sec);margin-top:2px;">' + repisaInfo + '</div>'
+        + '</div>';
+    }).join('');
+  }
+ 
+  function seleccionarArticuloBusquedaInv(cod) {
+    cerrarModal('modal-busqueda-inv');
+    abrirModalContar(cod);
   }
  
   // ═══════════════════════════════════════
@@ -1402,10 +1478,7 @@
   }
  
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(()=>{}); }
-  </script>
-</body>
-</html>
-<script>
+ 
   // ═══════════════════════════════════════
   //  IA — LLAMAR AL BACKEND APPS SCRIPT
   // ═══════════════════════════════════════
@@ -1640,18 +1713,7 @@
       if (btnIA) { btnIA.disabled = false; btnIA.innerHTML = '🤖'; }
     }
   }
-</script>
  
-
-
-
-
-
-
-
-
-
-
-
-
-
+  </script>
+</body>
+</html>
