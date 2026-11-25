@@ -150,6 +150,30 @@
     .etiqueta-desc{font-size:6pt;color:#555;margin-top:0.5mm;line-height:1.2;}
     @media print{body{margin:0;}.etiqueta-grid{padding:5mm;}}
     @media(min-width:600px){.stats-grid{grid-template-columns:repeat(4,1fr);}.repisa-selector{grid-template-columns:repeat(3,1fr);}}
+
+    /* ===== Estilo tipo Defontana (aprobado por Carlos 25-11-2026) ===== */
+    :root{--durazno:#FBC3AE;--durazno-2:#FDE3D8;--gris-f:#F3F4F6;--gris-b:#E5E7EB;--gris-t:#6B7280;}
+    body{background:var(--gris-f);font-size:13px;}
+    .card{border:none;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+    .card-title{text-transform:none;letter-spacing:0;font-size:15px;border-bottom:1px solid var(--gris-b);}
+    .btn-primary{background:var(--naranja);border-radius:22px;}
+    .btn-secondary{color:var(--naranja);border-color:var(--naranja);border-radius:22px;}
+    table th{background:var(--durazno)!important;color:var(--azul)!important;font-weight:600;}
+    .stepper .grupo-menu{display:none;}
+    @media (min-width:900px){
+      .app-header{background:#fff;color:var(--azul);border-bottom:1px solid var(--gris-b);box-shadow:none;}
+      .app-header .logo-header,.app-header img{filter:none!important;}
+      .header-sub{color:var(--gris-t);opacity:1;}
+      #header-user{color:var(--gris-t)!important;}
+      .cuerpo{display:flex;min-height:calc(100vh - 58px);}
+      .stepper{display:block;flex:0 0 230px;background:#fff;border-right:1px solid var(--gris-b);padding:10px 0;overflow:visible;position:sticky;top:58px;height:calc(100vh - 58px);}
+      .stepper .grupo-menu{display:flex;align-items:center;gap:10px;padding:12px 16px 6px;font-size:13px;font-weight:600;color:var(--azul);}
+      .step-btn{display:flex;flex-direction:row;justify-content:flex-start;gap:8px;width:calc(100% - 12px);min-width:0;padding:8px 12px 8px 26px;margin:1px 0;font-size:13px;color:var(--gris-t);border-bottom:none;border-left:3px solid transparent;border-radius:0 6px 6px 0;text-align:left;}
+      .step-btn:hover{background:var(--gris-f);}
+      .step-btn.active{background:var(--durazno-2);color:var(--naranja);font-weight:600;border-bottom:none;border-left-color:var(--naranja);}
+      .step-btn .step-icon{font-size:14px;}
+      .main{flex:1;max-width:1100px;padding:18px 24px;margin:0;}
+    }
   </style>
 </head>
 <body>
@@ -165,13 +189,17 @@
     <div id="header-user" style="font-size:11px;color:rgba(255,255,255,0.7);text-align:right;"></div>
   </header>
  
+  <div class="cuerpo">
   <nav class="stepper" id="stepper">
-    <button class="step-btn active" onclick="irAPaso(0)" id="tab0"><span class="step-icon">🏠</span><span>Inicio</span></button>
-    <button class="step-btn" onclick="irAPaso(1)" id="tab1"><span class="step-icon">🔍</span><span>Buscar</span></button>
-    <button class="step-btn" onclick="irAPaso(2)" id="tab2"><span class="step-icon">📦</span><span>Recepción</span></button>
+    <div class="grupo-menu">🏠 Inicio</div>
+    <button class="step-btn active" onclick="irAPaso(0)" id="tab0"><span class="step-icon">🏠</span><span>Panel de control</span></button>
+    <div class="grupo-menu">📦 Inventario</div>
+    <button class="step-btn" onclick="irAPaso(1)" id="tab1"><span class="step-icon">🔍</span><span>Artículos</span></button>
+    <button class="step-btn" onclick="irAPaso(2)" id="tab2"><span class="step-icon">📥</span><span>Parte de Entrada</span></button>
     <button class="step-btn" onclick="irAPaso(3)" id="tab3"><span class="step-icon">↩️</span><span>Devolución</span></button>
-    <button class="step-btn" onclick="irAPaso(5)" id="tab5"><span class="step-icon">📋</span><span>Inventario</span></button>
-    <button class="step-btn" onclick="irAPaso(4)" id="tab4"><span class="step-icon">📊</span><span>Reportes</span></button>
+    <button class="step-btn" onclick="irAPaso(5)" id="tab5"><span class="step-icon">📋</span><span>Cierres (conteo)</span></button>
+    <div class="grupo-menu">📊 Informes</div>
+    <button class="step-btn" onclick="irAPaso(4)" id="tab4"><span class="step-icon">📊</span><span>Mis Informes</span></button>
   </nav>
  
   <div class="main">
@@ -424,6 +452,7 @@
     </div>
  
   </div><!-- /main -->
+  </div><!-- /cuerpo -->
  
   <!-- MODAL: DETALLE ARTÍCULO -->
   <div class="modal-overlay" id="modal-articulo">
